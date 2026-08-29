@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Campus Market"
+description = "A mobile-first buy and sell marketplace for Pondicherry University students, designed for fast discovery, simple listings, and trusted campus-to-campus contact."
+version = "1.0.0"
+id = "artifacts/campus-market"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22643
+
+[services.development]
+run = "pnpm --filter @workspace/campus-market run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/campus-market", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/campus-market/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22643"
+BASE_PATH = "/"
