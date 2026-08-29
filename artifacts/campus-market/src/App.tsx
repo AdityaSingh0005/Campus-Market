@@ -5,9 +5,10 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 import {
-  ArrowLeft, ArrowUpRight, BadgeCheck, BarChart3, BookOpen, Box, Check,
+  ArrowLeft, ArrowUpRight, BadgeCheck, BarChart3, BookOpen, Box, Camera, Check,
+  ChevronLeft, ChevronRight,
   CircleAlert, Clock3, Eye, Flag, Heart, Home as HomeIcon, LayoutGrid, LogOut, MapPin,
-  MessageCircle, Package, Pencil, Plus, Search, Settings, ShieldCheck, ShoppingBag,
+  ImagePlus, MessageCircle, Package, Pencil, Plus, Search, Settings, Share2, ShieldCheck, ShoppingBag,
   SlidersHorizontal, Sparkles, Tag, Trash2, TrendingUp, UserRound, Users, X, Zap,
 } from 'lucide-react';
 
@@ -17,16 +18,29 @@ type Condition = 'Like new' | 'Good' | 'Fair';
 type Listing = {
   id: string; title: string; price: number; category: Category; condition: Condition;
   description: string; location: string; sellerName: string; sellerCampus: string;
-  sellerVerified: boolean; image: string; postedAt: string; status: ListingStatus;
+  sellerVerified: boolean; image: string; images?: string[]; postedAt: string; status: ListingStatus;
   whatsappNumber: string;
 };
-type User = { name: string; email: string; campus: string; profileImage: string; verified: boolean };
+type User = {
+  name: string;
+  email: string;
+  campus: string;
+  profileImage: string;
+  verified: boolean;
+  phone: string;
+  location: string;
+  bio: string;
+};
 type Report = { listingId: string; reason: string; status: 'open' | 'reviewed' };
 
 const queryClient = new QueryClient();
 const STORAGE_KEY = 'campus-market-listings-v2';
-const USER_KEY = 'campus-market-user';
+const USER_KEY = 'campus-market-user-v2';
 const REPORTS_KEY = 'campus-market-reports';
+const FAVORITES_KEY = 'campus-market-favorites';
+const RECENT_KEY = 'campus-market-recently-viewed';
+const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
+const MAX_IMAGES = 6;
 const photos = {
   books: 'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?auto=format&fit=crop&w=900&q=80',
   laptop: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=900&q=80',
@@ -43,7 +57,7 @@ const seedListings: Listing[] = [
   { id: 'kettle-1', title: 'Prestige electric kettle, 1.5L', price: 650, category: 'Daily needs', condition: 'Like new', description: 'Barely used kettle. Handy for tea, coffee and instant noodles in the hostel.', location: 'Mahatma Gandhi Block', sellerName: 'Sana F.', sellerCampus: 'Pondicherry University', sellerVerified: false, image: photos.kettle, postedAt: '3 hrs ago', status: 'active', whatsappNumber: '919822334466' },
   { id: 'monitor-1', title: '24-inch IPS monitor', price: 7200, category: 'Electronics', condition: 'Like new', description: 'Great second screen for coding or design. HDMI cable included.', location: 'Kalapet Campus', sellerName: 'Vikram N.', sellerCampus: 'Pondicherry University', sellerVerified: true, image: photos.monitor, postedAt: 'Yesterday', status: 'active', whatsappNumber: '919833445577' },
 ];
-const defaultUser: User = { name: 'Kavya Menon', email: 'kavya.menon@pondiuni.edu.in', campus: 'Pondicherry University', profileImage: '', verified: true };
+const defaultUser: User = { name: 'Kavya Menon', email: 'kavya.menon@pondiuni.edu.in', campus: 'Pondicherry University', profileImage: '', verified: true, phone: '919876500001', location: 'Tagore Hostel', bio: 'Making campus life a little lighter, one useful thing at a time.' };
 const categories: { label: Category; icon: typeof BookOpen; tint: string }[] = [
   { label: 'Textbooks', icon: BookOpen, tint: 'bg-[#e5f0e9] text-[#1d654f]' },
   { label: 'Electronics', icon: Zap, tint: 'bg-[#f7e8c9] text-[#8b5a18]' },
@@ -58,6 +72,28 @@ function readStorage<T>(key: string, fallback: T): T {
 }
 function money(value: number) { return `₹${value.toLocaleString('en-IN')}`; }
 function initials(name: string) { return name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase(); }
+function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, 1400 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(objectUrl);
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('This image could not be read.')); };
+    image.src = objectUrl;
+  });
+}
+async function optimizeImages(files: File[]) {
+  const valid = files.filter((file) => file.type.startsWith('image/') && file.size <= MAX_IMAGE_SIZE);
+  if (valid.length !== files.length) throw new Error('Use image files smaller than 8 MB each.');
+  return Promise.all(valid.map(compressImage));
+}
 function whatsapp(number: string, title: string) {
   const message = encodeURIComponent(`Hi! I found "${title}" on Campus Market. Is it still available?`);
   window.open(`https://wa.me/${number}?text=${message}`, '_blank', 'noopener,noreferrer');
@@ -70,14 +106,14 @@ function Logo({ compact = false }: { compact?: boolean }) {
   </Link>;
 }
 
-function Avatar({ name, verified, light = false }: { name: string; verified?: boolean; light?: boolean }) {
+function Avatar({ name, verified, light = false, image = '' }: { name: string; verified?: boolean; light?: boolean; image?: string }) {
   return <span className={`relative grid h-10 w-10 shrink-0 place-items-center rounded-full text-xs font-bold ${light ? 'bg-[#f7e8c9] text-[#75501b]' : 'bg-[#dbe9df] text-[#245b48]'}`} data-testid={`avatar-${name.replace(/\s/g, '-').toLowerCase()}`}>
-    {initials(name)}
+    {image ? <img src={image} alt="" className="h-full w-full rounded-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : initials(name)}
     {verified && <BadgeCheck className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full bg-[#f8f4ea] text-[#28755b]" strokeWidth={2.5} />}
   </span>;
 }
 
-function Shell({ children }: { children: ReactNode }) {
+function Shell({ children, user }: { children: ReactNode; user: User }) {
   const [location, setLocation] = useLocation();
   const nav = [
     { href: '/', label: 'Discover', icon: HomeIcon },
@@ -98,8 +134,8 @@ function Shell({ children }: { children: ReactNode }) {
         </div>
       </div>
       <Link href="/profile" className="flex items-center gap-3 rounded-xl bg-[#245547] p-3" data-testid="link-sidebar-profile">
-        <Avatar name={defaultUser.name} verified />
-        <div className="min-w-0"><p className="truncate text-sm font-semibold text-[#f8f4ea]">{defaultUser.name}</p><p className="truncate text-[11px] text-[#a8c6b6]">Pondicherry University</p></div>
+        <Avatar name={user.name} verified={user.verified} image={user.profileImage} />
+        <div className="min-w-0"><p className="truncate text-sm font-semibold text-[#f8f4ea]">{user.name}</p><p className="truncate text-[11px] text-[#a8c6b6]">{user.campus}</p></div>
       </Link>
     </aside>
     <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-[#e7dfd1] bg-[#f6f1e7]/95 px-4 backdrop-blur md:ml-[248px] md:px-10">
@@ -107,7 +143,7 @@ function Shell({ children }: { children: ReactNode }) {
       <div className="hidden items-center gap-2 text-xs text-[#60766b] md:flex"><span className="h-2 w-2 rounded-full bg-[#52a77c]" />Pondicherry University only</div>
       <div className="ml-auto flex items-center gap-2">
         <Link href="/sell" className="hidden items-center gap-2 rounded-lg bg-[#173f36] px-4 py-2.5 text-sm font-bold text-[#f8f4ea] transition-transform hover:-translate-y-0.5 md:flex" data-testid="link-header-sell"><Plus className="h-4 w-4" />Sell an item</Link>
-        <Link href="/profile" className="md:hidden" data-testid="link-mobile-profile"><Avatar name={defaultUser.name} verified /></Link>
+        <Link href="/profile" className="md:hidden" data-testid="link-mobile-profile"><Avatar name={user.name} verified={user.verified} image={user.profileImage} /></Link>
       </div>
     </header>
     <main className="pb-20 md:ml-[248px] md:pb-0">{children}</main>
@@ -118,13 +154,12 @@ function Shell({ children }: { children: ReactNode }) {
   </div>;
 }
 
-function ListingCard({ listing, onFavorite }: { listing: Listing; onFavorite: (id: string) => void }) {
-  const [liked, setLiked] = useState(false);
+function ListingCard({ listing, favorite, onFavorite }: { listing: Listing; favorite: boolean; onFavorite: (id: string) => void }) {
   return <div className="market-card group relative overflow-hidden rounded-2xl border border-[#e8dfd1] bg-[#fffdf8]" data-testid={`card-listing-${listing.id}`}>
     <Link href={`/listing/${listing.id}`} className="block" data-testid={`link-listing-${listing.id}`}>
       <div className="relative aspect-[1.12/1] overflow-hidden bg-[#ebe7dc]">
         <img src={listing.image} alt={listing.title} onError={(event) => { event.currentTarget.style.display = 'none'; }} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" data-testid={`img-listing-${listing.id}`} />
-        <div className="absolute inset-x-3 top-3 flex justify-between"><span className="rounded-md bg-[#fffdf8]/90 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-[#49665a]">{listing.category}</span><button type="button" onClick={(e) => { e.preventDefault(); setLiked((value) => !value); onFavorite(listing.id); }} className={`grid h-8 w-8 place-items-center rounded-full bg-[#fffdf8]/90 transition-colors ${liked ? 'text-[#b64d3c]' : 'text-[#697a70]'}`} data-testid={`button-favorite-${listing.id}`}><Heart className="h-4 w-4" fill={liked ? 'currentColor' : 'none'} /></button></div>
+         <div className="absolute inset-x-3 top-3 flex justify-between"><span className="rounded-md bg-[#fffdf8]/90 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-[#49665a]">{listing.category}</span><button type="button" onClick={(e) => { e.preventDefault(); onFavorite(listing.id); }} className={`grid h-8 w-8 place-items-center rounded-full bg-[#fffdf8]/90 transition-colors ${favorite ? 'text-[#b64d3c]' : 'text-[#697a70]'}`} aria-label={favorite ? 'Remove from saved listings' : 'Save listing'} data-testid={`button-favorite-${listing.id}`}><Heart className="h-4 w-4" fill={favorite ? 'currentColor' : 'none'} /></button></div>
         {listing.status === 'sold' && <div className="absolute inset-0 grid place-items-center bg-[#173f36]/60"><span className="rounded-md bg-[#e8bf5b] px-3 py-1 font-mono text-xs font-bold uppercase tracking-wider text-[#173f36]">Sold</span></div>}
       </div>
       <div className="p-4">
@@ -139,8 +174,9 @@ function PageIntro({ eyebrow, title, description, children }: { eyebrow: string;
   return <section className="mx-auto max-w-[1150px] px-5 pb-6 pt-9 md:px-10 md:pt-12"><div className="flex flex-col justify-between gap-5 md:flex-row md:items-end"><div><p className="mb-3 font-mono text-[10px] font-bold uppercase tracking-[.2em] text-[#b27823]">{eyebrow}</p><h1 className="text-[clamp(2rem,4vw,3.4rem)] font-bold leading-[.98] tracking-[-.065em] text-[#173f36]">{title}</h1><p className="mt-3 max-w-lg text-sm leading-relaxed text-[#63766c]">{description}</p></div>{children}</div></section>;
 }
 
-function Home({ listings, onFavorite }: { listings: Listing[]; onFavorite: (id: string) => void }) {
+function Home({ listings, favorites, onFavorite, recentlyViewed }: { listings: Listing[]; favorites: string[]; onFavorite: (id: string) => void; recentlyViewed: string[] }) {
   const active = listings.filter((listing) => listing.status === 'active');
+  const recent = recentlyViewed.map((id) => listings.find((listing) => listing.id === id)).filter((listing): listing is Listing => Boolean(listing && listing.status === 'active'));
   return <div className="animate-rise">
     <section className="mx-auto max-w-[1150px] px-5 pb-8 pt-9 md:px-10 md:pb-12 md:pt-14">
       <div className="relative overflow-hidden rounded-[26px] bg-[#1b4b3e] px-6 py-9 text-[#f8f4ea] md:px-12 md:py-14">
@@ -159,7 +195,7 @@ function Home({ listings, onFavorite }: { listings: Listing[]; onFavorite: (id: 
   </div>;
 }
 
-function SearchPage({ listings, onFavorite }: { listings: Listing[]; onFavorite: (id: string) => void }) {
+function SearchPage({ listings, favorites, onFavorite }: { listings: Listing[]; favorites: string[]; onFavorite: (id: string) => void }) {
   const [query, setQuery] = useState(''); const [category, setCategory] = useState('All categories'); const [condition, setCondition] = useState('All conditions'); const [maxPrice, setMaxPrice] = useState(''); const [sort, setSort] = useState('Latest');
   const params = new URLSearchParams(window.location.search);
   useEffect(() => { const initial = params.get('category'); if (initial) setCategory(initial); }, []);

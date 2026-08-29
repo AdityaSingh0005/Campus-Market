@@ -1,0 +1,90 @@
+Improve the existing Campus Buy & Sell website without changing its current design language or breaking any existing functionality.
+
+### 1. Product Image Upload — IMPORTANT
+
+Add a proper image upload option to the **Sell Item / Create Listing** form.
+
+Requirements:
+
+* Allow users to upload multiple product images.
+* Show image preview immediately after selection.
+* Allow removing/reordering images before posting.
+* Add a clean "Add Photos" button with a camera/image icon.
+* Make the first image the primary listing image.
+* Compress/optimize images where appropriate.
+* Validate file type and reasonable file size.
+* Show a clean upload/loading state.
+* Make the image upload experience extremely simple and mobile-friendly.
+
+### 2. Edit Profile
+
+Add **Edit Profile** functionality.
+
+Users should be able to edit:
+
+* Profile photo
+* Name
+* Phone number
+* Hostel/location
+* Basic profile information
+
+Profile photo must support image upload with preview.
+
+Do not expose the user's phone number publicly.
+
+### 3. Improve Existing UI/UX
+
+Polish the existing interface to make it feel more:
+
+* Premium
+* Clean
+* Modern
+* Responsive
+* Fast
+* Student-friendly
+
+Do NOT redesign the entire website unnecessarily.
+
+Improve spacing, typography, buttons, cards, empty states, loading states and mobile responsiveness while maintaining the existing visual identity.
+
+### 4. Small Useful Features
+
+Add only genuinely useful features:
+
+* Save/Favorite listing
+* Share listing
+* Mark listing as Sold
+* Report listing
+* Recently viewed listings
+* Better search experience
+* Useful filters such as price, category and condition
+
+Keep everything extremely simple.
+
+### 5. Important UX Rule
+
+The website must remain as simple as WhatsApp.
+
+Do NOT add:
+
+* Internal chat
+* Followers
+* Likes/comments
+* Stories
+* Complicated checkout
+* Unnecessary animations
+* Unnecessary forms
+
+Before modifying anything, inspect the existing project structure and reuse the current components, database and APIs wherever possible.
+
+Do not duplicate functionality.
+
+After implementation, verify that:
+
+* Product image upload works on mobile and desktop.
+* Profile photo upload works.
+* Edit Profile actually saves changes.
+* Uploaded images persist after refresh.
+* Listing images appear correctly on Home, Search and Listing Details.
+* Existing features continue working.
+* No broken layouts or console errors remain.
