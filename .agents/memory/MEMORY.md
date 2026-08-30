@@ -1,0 +1,1 @@
+- [Artifact verification](artifact-verification.md) — managed workflows inject Vite runtime values; standalone builds need PORT and BASE_PATH explicitly.
